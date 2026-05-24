@@ -1,4 +1,4 @@
-# cujulia — CUDA Mandelbrot / Julia renderer
+# julia.cu — CUDA Mandelbrot / Julia renderer
 
 GPU-accelerated, tiled, lossless (uncompressed TIFF) fractal renderer.
 Built on CuPy `RawKernel` (real CUDA C kernels), driven from a tiny Python CLI.
