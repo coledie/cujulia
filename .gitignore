@@ -48,6 +48,16 @@ build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
+
+# Python / project
+.venv/
+__pycache__/
+*.pyc
+out/
+*.tif
+*.tiff
+*.png
+
 Makefile
 install_manifest.txt
 compile_commands.json
