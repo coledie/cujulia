@@ -52,6 +52,10 @@ def parse_args():
                         "Each step adds uniform random in [-eps, +eps].")
     p.add_argument("--seed", type=int, default=1,
                    help="RNG seed for the --epsilon perturbation (reproducible).")
+    p.add_argument("--blend-epsilon", type=float, default=None,
+                   help="If set, render once with eps=0 and once with this "
+                        "amplitude, then per-pixel average the smooth-iter "
+                        "counts before coloring.")
     p.add_argument("--palette", default="twilight")
     p.add_argument("--bits", type=int, choices=[8, 16], default=16)
     p.add_argument("--tile", type=int, default=2048)
@@ -72,6 +76,8 @@ def render(args) -> np.ndarray:
     full = np.empty((H, W, 3), dtype=np_dtype)
 
     smooth_buf = cp.empty(tile * tile, dtype=cp.float32)
+    smooth_buf_b = (cp.empty(tile * tile, dtype=cp.float32)
+                    if args.blend_epsilon is not None else None)
     mode_id = 0 if args.mode == "mandelbrot" else 1
     escape_r2 = float(args.escape) ** 2
     if len(args.epsilon) == 1:
@@ -106,6 +112,33 @@ def render(args) -> np.ndarray:
                 eps_x=eps_x, eps_y=eps_y,
                 seed=args.seed,
             )
+            if args.blend_epsilon is not None:
+                sub_b = smooth_buf_b[: tw * th]
+                kernels.launch(
+                    sub_b,
+                    width=tw, height=th,
+                    cx=args.center[0], cy=args.center[1],
+                    scale=args.scale,
+                    max_iter=args.max_iter,
+                    escape_r2=escape_r2,
+                    mode=mode_id,
+                    jx=args.jc[0], jy=args.jc[1],
+                    tile_x=tx * tile, tile_y=ty * tile,
+                    full_width=W, full_height=H,
+                    eps_x=float(args.blend_epsilon),
+                    eps_y=float(args.blend_epsilon),
+                    seed=args.seed,
+                )
+                # Average in smooth-iter space. Treat in-set (-1) as max_iter
+                # for averaging; mark output in-set only if BOTH were in-set.
+                a = cp.where(sub_flat < 0,
+                             cp.float32(args.max_iter), sub_flat)
+                b = cp.where(sub_b < 0,
+                             cp.float32(args.max_iter), sub_b)
+                avg = (a + b) * cp.float32(0.5)
+                both_in = (sub_flat < 0) & (sub_b < 0)
+                avg = cp.where(both_in, cp.float32(-1.0), avg)
+                sub_flat = avg
             sub_smooth = sub_flat.reshape(th, tw)
             rgb = pal.apply(sub_smooth, lut, args.max_iter,
                             in_set=tuple(args.in_set))

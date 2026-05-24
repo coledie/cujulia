@@ -22,18 +22,22 @@ __device__ inline unsigned long long splitmix64(unsigned long long x) {
     return x ^ (x >> 31);
 }
 
-__device__ inline unsigned long long xorshift64(unsigned long long *s) {
-    unsigned long long x = *s;
-    x ^= x << 13;
-    x ^= x >> 7;
-    x ^= x << 17;
-    *s = x;
-    return x;
+// 64-bit LCG (Knuth/Numerical Recipes constants). 1 imul + 1 add per call.
+__device__ inline unsigned long long lcg64(unsigned long long *s) {
+    *s = (*s) * 6364136223846793005ULL + 1442695040888963407ULL;
+    return *s;
 }
 
-// Uniform double in [0, 1) from top 53 bits.
-__device__ inline double urand(unsigned long long *s) {
-    return (double)(xorshift64(s) >> 11) * (1.0 / 9007199254740992.0);
+// One LCG step -> two floats in [-1, 1). Uses the upper 48 bits of state
+// (split into two 24-bit fields), since LCG low bits have shorter periods.
+__device__ inline void rand2f_signed(unsigned long long *s,
+                                     float *a, float *b) {
+    unsigned long long r = lcg64(s);
+    unsigned int hi = (unsigned int)(r >> 40);                // top 24 bits
+    unsigned int md = (unsigned int)((r >> 16) & 0xFFFFFFu);  // middle 24 bits
+    const float inv = 1.0f / 8388608.0f;                      // 1 / 2^23
+    *a = (float)hi * inv - 1.0f;
+    *b = (float)md * inv - 1.0f;
 }
 
 extern "C" __global__
@@ -82,7 +86,6 @@ void fractal(
     unsigned long long gy_i = (unsigned long long)(py + tile_y);
     unsigned long long rng = splitmix64(seed ^ (gx_i * 0xD2B74407B1CE6E93ULL)
                                               ^ (gy_i * 0x9E3779B97F4A7C15ULL));
-    if (rng == 0ULL) rng = 0x1234567890ABCDEFULL;  // xorshift can't start at 0
 
     const bool use_eps = (eps_x != 0.0) || (eps_y != 0.0);
 
@@ -92,8 +95,10 @@ void fractal(
     while (zx2 + zy2 < escape_r2 && i < max_iter) {
         double rx = 0.0, ry = 0.0;
         if (use_eps) {
-            rx = (urand(&rng) * 2.0 - 1.0) * eps_x;
-            ry = (urand(&rng) * 2.0 - 1.0) * eps_y;
+            float a, b;
+            rand2f_signed(&rng, &a, &b);
+            rx = (double)a * eps_x;
+            ry = (double)b * eps_y;
         }
         double new_zy = 2.0 * zx * zy + ky + ry;
         double new_zx = zx2 - zy2     + kx + rx;
