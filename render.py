@@ -47,8 +47,11 @@ def parse_args():
     p.add_argument("--jc", type=float, nargs=2, default=[-0.8, 0.156],
                    metavar=("RE", "IM"), help="Julia constant")
     p.add_argument("--epsilon", type=float, nargs="+", default=[0.0],
-                   help="Additive perturbation per iter: one value (real) "
-                        "or two values (real imag)")
+                   help="Random perturbation amplitude per iter, per pixel. "
+                        "One value (same for re/im) or two (re im). "
+                        "Each step adds uniform random in [-eps, +eps].")
+    p.add_argument("--seed", type=int, default=1,
+                   help="RNG seed for the --epsilon perturbation (reproducible).")
     p.add_argument("--palette", default="twilight")
     p.add_argument("--bits", type=int, choices=[8, 16], default=16)
     p.add_argument("--tile", type=int, default=2048)
@@ -101,6 +104,7 @@ def render(args) -> np.ndarray:
                 tile_x=tx * tile, tile_y=ty * tile,
                 full_width=W, full_height=H,
                 eps_x=eps_x, eps_y=eps_y,
+                seed=args.seed,
             )
             sub_smooth = sub_flat.reshape(th, tw)
             rgb = pal.apply(sub_smooth, lut, args.max_iter,

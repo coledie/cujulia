@@ -39,7 +39,9 @@ Run `python render.py --help` for all flags.
 
 | Want to change | How |
 |---|---|
-| Bailout (epsilon) | `--escape 2.0` (radius; squared internally) |
+| Bailout radius | `--escape 2.0` (squared internally) |
+| Random perturbation | `--epsilon AMP` — each iteration of each pixel adds an independent uniform random in `[-AMP, +AMP]` to z (re and im). `--epsilon 0` is the deterministic fractal. `--epsilon RE_AMP IM_AMP` for asymmetric amplitudes. |
+| RNG seed | `--seed N` (reproducible random perturbation; default 1) |
 | Resolution | `--width / --height` |
 | Zoom | `--scale` (vertical extent) and `--center RE IM` |
 | Iteration depth | `--iter` |
@@ -52,8 +54,21 @@ Run `python render.py --help` for all flags.
 ### Changing the fractal formula
 
 Open `kernels.py` and edit the block marked `INNER LOOP`. The default is
-`z = z*z + c`. You can swap in e.g. `z = z*z*z + c`, burning ship
-(`zx = |zx|, zy = |zy|` before squaring), etc.
+`z = z*z + c + (rx, ry)`, where `(rx, ry)` is a fresh per-iteration random
+perturbation in `[-eps, +eps]` (zero when `--epsilon 0`). You can swap in
+e.g. `z = z*z*z + c`, burning ship (`zx = |zx|, zy = |zy|` before squaring),
+etc.
+
+### Random epsilon details
+
+- The perturbation is **per-pixel, per-iteration** (a fresh random draw at
+  every step), not a fixed offset. Visually this looks like noise on the
+  chaotic boundary of the set; the deep interior and far exterior are
+  unaffected.
+- RNG is xorshift64 seeded by `splitmix64(seed ⊕ pixel_coords)`, so output
+  is fully reproducible given the same `--seed`.
+- At small amplitudes (`--epsilon 1e-4`) you get a subtle fuzz; at larger
+  amplitudes (`--epsilon 0.05`+) the set dissolves into noise.
 
 ## Output
 
